@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor Nastroju</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #17171f;
+    --surface2: #1e1e2a;
+    --border: #2a2a3a;
+    --accent: #7c6af7;
+    --accent2: #f7a26a;
+    --text: #e8e8f0;
+    --text-muted: #6a6a80;
+    --neg: #f76a7c;
+    --pos: #6af7a2;
+    --zero: #aaaacc;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  .app { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 32px 20px 60px; }
+
+  header {
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(28px, 6vw, 40px);
+    font-weight: 400;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+
+  h1 span { font-style: italic; color: var(--accent); }
+
+  .date-display {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 8px;
+  }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 32px;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 10px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 7px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .tab.active {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ENTRY FORM */
+  .entry-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+
+  .entry-card h2 {
+    font-family: 'DM Serif Display', serif;
+    font-weight: 400;
+    font-size: 20px;
+    margin-bottom: 24px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .slider-section { margin-bottom: 24px; }
+
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+
+  .slider-label span:first-child {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+  }
+
+  .slider-value {
+    font-size: 28px;
+    font-family: 'DM Serif Display', serif;
+    min-width: 48px;
+    text-align: right;
+    transition: color 0.2s;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+  .range-hints {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 14px;
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+    transition: border-color 0.2s;
+    line-height: 1.6;
+  }
+
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--text-muted); }
+
+  .label-small {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .save-btn {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .save-btn:hover { background: #6a58e8; transform: translateY(-1px); }
+  .save-btn:active { transform: translateY(0); }
+
+  .save-btn.saved {
+    background: var(--pos);
+    color: var(--bg);
+  }
+
+  /* HISTORY */
+  .history-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .entry-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 120px 1fr 1fr;
+    gap: 12px;
+    align-items: center;
+    transition: border-color 0.2s;
+  }
+
+  .entry-row:hover { border-color: var(--accent); }
+
+  .entry-date {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+  }
+
+  .entry-scores { display: flex; gap: 16px; }
+
+  .score-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .score-chip .label { font-size: 9px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+  .score-chip .val { font-size: 18px; font-family: 'DM Serif Display', serif; }
+
+  .entry-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-style: italic;
+  }
+
+  /* CHART */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+
+  .chart-card h2 {
+    font-family: 'DM Serif Display', serif;
+    font-weight: 400;
+    font-size: 20px;
+    margin-bottom: 20px;
+    font-style: italic;
+    color: var(--text-muted);
+  }
+
+  .chart-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .range-btn {
+    padding: 6px 14px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .range-btn.active, .range-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  canvas { max-height: 280px; }
+
+  .export-btn {
+    padding: 12px 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .export-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* THERAPIST VIEW */
+  .therapist-section { }
+
+  .therapist-link-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+
+  .therapist-link-card h2 {
+    font-family: 'DM Serif Display', serif;
+    font-weight: 400;
+    font-size: 20px;
+    margin-bottom: 8px;
+    font-style: italic;
+  }
+
+  .therapist-link-card p {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  .link-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 11px;
+    color: var(--accent);
+    word-break: break-all;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+  }
+
+  .copy-btn {
+    padding: 12px 20px;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .copy-btn:hover { background: #6a58e8; }
+  .copy-btn.copied { background: var(--pos); color: var(--bg); }
+
+  .info-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.7;
+    margin-top: 16px;
+  }
+
+  /* THERAPIST READ-ONLY VIEW */
+  .readonly-banner {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* STATS ROW */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+  }
+
+  .stat-card .stat-val {
+    font-family: 'DM Serif Display', serif;
+    font-size: 32px;
+    display: block;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-card .stat-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  /* color helpers */
+  .color-pos { color: var(--pos); }
+  .color-neg { color: var(--neg); }
+  .color-zero { color: var(--zero); }
+  .color-energy { color: var(--accent2); }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-muted);
+    font-style: italic;
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+  }
+
+  /* responsive */
+  @media (max-width: 480px) {
+    .entry-row { grid-template-columns: 1fr 1fr; }
+    .entry-note { grid-column: 1/-1; }
+    .stats-row { grid-template-columns: repeat(3,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="mainApp">
+  <header>
+    <div class="header-top">
+      <div>
+        <h1>Monitor<br><span>Nastroju</span></h1>
+        <div class="date-display" id="headerDate"></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('entry')">Dziś</button>
+    <button class="tab" onclick="switchTab('chart')">Wykres</button>
+    <button class="tab" onclick="switchTab('history')">Historia</button>
+    <button class="tab" onclick="switchTab('share')">Udostępnij</button>
+  </div>
+
+  <!-- ENTRY -->
+  <div class="panel active" id="panel-entry">
+    <div class="entry-card">
+      <h2>Jak się dziś czujesz?</h2>
+
+      <div class="slider-section">
+        <div class="slider-label">
+          <span>Nastrój</span>
+          <span class="slider-value" id="moodVal">0</span>
+        </div>
+        <input type="range" min="-5" max="5" value="0" step="1" id="moodSlider" oninput="updateSlider('mood')">
+        <div class="range-hints"><span>−5 bardzo źle</span><span>0 neutralnie</span><span>+5 świetnie</span></div>
+      </div>
+
+      <div class="slider-section">
+        <div class="slider-label">
+          <span>Energia</span>
+          <span class="slider-value" id="energyVal" style="color: var(--accent2)">0</span>
+        </div>
+        <input type="range" min="-5" max="5" value="0" step="1" id="energySlider" oninput="updateSlider('energy')">
+        <div class="range-hints"><span>−5 bez sił</span><span>0 normalnie</span><span>+5 pełna energia</span></div>
+      </div>
+
+      <div>
+        <label class="label-small">Notatka (opcjonalnie)</label>
+        <textarea id="noteInput" placeholder="Co się działo? Jak minął dzień..."></textarea>
+      </div>
+
+      <button class="save-btn" id="saveBtn" onclick="saveEntry()">Zapisz dzień</button>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="panel" id="panel-chart">
+    <div class="chart-card">
+      <h2>Przebieg nastroju</h2>
+      <div class="chart-controls">
+        <button class="range-btn active" onclick="setRange(7, this)">7 dni</button>
+        <button class="range-btn" onclick="setRange(14, this)">14 dni</button>
+        <button class="range-btn" onclick="setRange(30, this)">30 dni</button>
+        <button class="range-btn" onclick="setRange(999, this)">Wszystko</button>
+      </div>
+      <canvas id="moodChart"></canvas>
+      <button class="export-btn" onclick="exportChart()">⬇ Pobierz wykres (PNG)</button>
+    </div>
+
+    <div class="stats-row" id="statsRow"></div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="panel" id="panel-history">
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <!-- SHARE -->
+  <div class="panel" id="panel-share">
+    <div class="therapist-link-card">
+      <h2>Widok dla terapeutki</h2>
+      <p>Terapeutka otwiera ten link i widzi twoje dane oraz wykres — tylko do odczytu, bez możliwości edycji.</p>
+      <div class="link-box" id="shareLink">Generowanie linku...</div>
+      <button class="copy-btn" id="copyBtn" onclick="copyLink()">Kopiuj link</button>
+      <div class="info-box">
+        Dane są przechowywane lokalnie w twojej przeglądarce i kodowane w linku. Terapeutka nie potrzebuje konta — wystarczy link.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- READONLY VIEW -->
+<div class="app" id="readonlyApp" style="display:none">
+  <header>
+    <div class="header-top">
+      <div>
+        <h1>Monitor<br><span>Nastroju</span></h1>
+        <div class="date-display" id="headerDate2"></div>
+      </div>
+    </div>
+  </header>
+  <div class="readonly-banner">
+    <div class="dot"></div>
+    Widok tylko do odczytu — dane pacjenta
+  </div>
+  <div class="stats-row" id="statsRowRO"></div>
+  <div class="chart-card">
+    <h2>Przebieg nastroju i energii</h2>
+    <div class="chart-controls">
+      <button class="range-btn active" onclick="setRangeRO(7, this)">7 dni</button>
+      <button class="range-btn" onclick="setRangeRO(14, this)">14 dni</button>
+      <button class="range-btn" onclick="setRangeRO(30, this)">30 dni</button>
+      <button class="range-btn" onclick="setRangeRO(999, this)">Wszystko</button>
+    </div>
+    <canvas id="moodChartRO"></canvas>
+    <button class="export-btn" onclick="exportChartRO()">⬇ Pobierz wykres (PNG)</button>
+  </div>
+  <div class="history-list" id="historyListRO"></div>
+</div>
+
+<script>
+// ---- DATA ----
+const STORAGE_KEY = 'mood_tracker_v2';
+
+function loadEntries() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+}
+
+function saveEntries(entries) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+
+// ---- UTILS ----
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
+
+function formatDate(d) {
+  const [y,m,day] = d.split('-');
+  return `${day}.${m}.${y}`;
+}
+
+function scoreColor(v) {
+  if (v > 0) return 'var(--pos)';
+  if (v < 0) return 'var(--neg)';
+  return 'var(--zero)';
+}
+
+function scoreClass(v) {
+  if (v > 0) return 'color-pos';
+  if (v < 0) return 'color-neg';
+  return 'color-zero';
+}
+
+// ---- HEADER DATE ----
+function setHeaderDates() {
+  const opts = { weekday:'long', year:'numeric', month:'long', day:'numeric' };
+  const s = new Date().toLocaleDateString('pl-PL', opts);
+  document.getElementById('headerDate').textContent = s;
+  const h2 = document.getElementById('headerDate2');
+  if (h2) h2.textContent = s;
+}
+
+// ---- TABS ----
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'chart') renderChart();
+  if (name === 'history') renderHistory();
+  if (name === 'share') renderShareLink();
+}
+
+// ---- SLIDERS ----
+function updateSlider(type) {
+  const slider = document.getElementById(type+'Slider');
+  const val = parseInt(slider.value);
+  const el = document.getElementById(type+'Val');
+  el.textContent = val > 0 ? '+'+val : val;
+  el.style.color = scoreColor(val);
+}
+
+// ---- SAVE ----
+function saveEntry() {
+  const mood = parseInt(document.getElementById('moodSlider').value);
+  const energy = parseInt(document.getElementById('energySlider').value);
+  const note = document.getElementById('noteInput').value.trim();
+  const d = today();
+
+  let entries = loadEntries();
+  const idx = entries.findIndex(e => e.date === d);
+  const entry = { date: d, mood, energy, note };
+
+  if (idx >= 0) entries[idx] = entry;
+  else entries.push(entry);
+
+  entries.sort((a,b) => a.date.localeCompare(b.date));
+  saveEntries(entries);
+
+  const btn = document.getElementById('saveBtn');
+  btn.textContent = '✓ Zapisano';
+  btn.classList.add('saved');
+  setTimeout(() => {
+    btn.textContent = 'Zapisz dzień';
+    btn.classList.remove('saved');
+  }, 2000);
+}
+
+// ---- PRE-FILL TODAY ----
+function prefillToday() {
+  const entries = loadEntries();
+  const d = today();
+  const e = entries.find(x => x.date === d);
+  if (e) {
+    document.getElementById('moodSlider').value = e.mood;
+    document.getElementById('energySlider').value = e.energy;
+    document.getElementById('noteInput').value = e.note || '';
+    updateSlider('mood');
+    updateSlider('energy');
+  }
+}
+
+// ---- CHART ----
+let chartInstance = null;
+let currentRange = 7;
+
+function getChartData(entries, range) {
+  const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date));
+  const sliced = range >= 999 ? sorted : sorted.slice(-range);
+  return {
+    labels: sliced.map(e => formatDate(e.date)),
+    mood: sliced.map(e => e.mood),
+    energy: sliced.map(e => e.energy),
+  };
+}
+
+function buildChartConfig(data) {
+  return {
+    type: 'line',
+    data: {
+      labels: data.labels,
+      datasets: [
+        {
+          label: 'Nastrój',
+          data: data.mood,
+          borderColor: '#7c6af7',
+          backgroundColor: 'rgba(124,106,247,0.08)',
+          borderWidth: 2.5,
+          pointRadius: 5,
+          pointBackgroundColor: data.mood.map(v => scoreColor(v)),
+          tension: 0.35,
+          fill: true,
+        },
+        {
+          label: 'Energia',
+          data: data.energy,
+          borderColor: '#f7a26a',
+          backgroundColor: 'rgba(247,162,106,0.05)',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#f7a26a',
+          tension: 0.35,
+          fill: false,
+          borderDash: [5,3],
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 400 },
+      scales: {
+        y: {
+          min: -5, max: 5,
+          ticks: {
+            color: '#6a6a80', font: { family: 'DM Mono', size: 11 },
+            callback: v => v > 0 ? '+'+v : v
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          border: { color: 'rgba(255,255,255,0.06)' }
+        },
+        x: {
+          ticks: { color: '#6a6a80', font: { family: 'DM Mono', size: 10 }, maxRotation: 45 },
+          grid: { color: 'rgba(255,255,255,0.03)' },
+          border: { color: 'rgba(255,255,255,0.06)' }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#6a6a80', font: { family: 'DM Mono', size: 11 }, boxWidth: 20 }
+        },
+        tooltip: {
+          backgroundColor: '#17171f',
+          borderColor: '#2a2a3a',
+          borderWidth: 1,
+          titleColor: '#e8e8f0',
+          bodyColor: '#6a6a80',
+          titleFont: { family: 'DM Mono' },
+          bodyFont: { family: 'DM Mono', size: 12 },
+        }
+      }
+    }
+  };
+}
+
+function renderChart() {
+  const entries = loadEntries();
+  const data = getChartData(entries, currentRange);
+  const ctx = document.getElementById('moodChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, buildChartConfig(data));
+  renderStats(entries, 'statsRow');
+}
+
+function setRange(r, btn) {
+  currentRange = r;
+  document.querySelectorAll('#panel-chart .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderChart();
+}
+
+function exportChart() {
+  const url = document.getElementById('moodChart').toDataURL('image/png');
+  const a = document.createElement('a'); a.href = url; a.download = 'nastroj_wykres.png'; a.click();
+}
+
+// ---- STATS ----
+function renderStats(entries, containerId) {
+  if (!entries.length) return;
+  const moods = entries.map(e => e.mood);
+  const energies = entries.map(e => e.energy);
+  const avg = arr => (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+  const avgM = parseFloat(avg(moods));
+  const avgE = parseFloat(avg(energies));
+  const last = entries[entries.length-1];
+
+  const container = document.getElementById(containerId);
+  container.innerHTML = `
+    <div class="stat-card">
+      <span class="stat-val ${scoreClass(avgM)}">${avgM>0?'+'+avgM:avgM}</span>
+      <span class="stat-label">Śr. nastrój</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-val color-energy">${avgE>0?'+'+avgE:avgE}</span>
+      <span class="stat-label">Śr. energia</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-val" style="font-size:20px;padding-top:6px">${entries.length}</span>
+      <span class="stat-label">Dni zapisanych</span>
+    </div>
+  `;
+}
+
+// ---- HISTORY ----
+function renderHistory() {
+  const entries = [...loadEntries()].sort((a,b) => b.date.localeCompare(a.date));
+  const container = document.getElementById('historyList');
+  if (!entries.length) {
+    container.innerHTML = '<div class="empty-state">Brak zapisów</div>';
+    return;
+  }
+  container.innerHTML = entries.map(e => `
+    <div class="entry-row">
+      <div class="entry-date">${formatDate(e.date)}</div>
+      <div class="entry-scores">
+        <div class="score-chip">
+          <span class="label">Nastrój</span>
+          <span class="val ${scoreClass(e.mood)}">${e.mood>0?'+'+e.mood:e.mood}</span>
+        </div>
+        <div class="score-chip">
+          <span class="label">Energia</span>
+          <span class="val color-energy">${e.energy>0?'+'+e.energy:e.energy}</span>
+        </div>
+      </div>
+      <div class="entry-note">${e.note || '—'}</div>
+    </div>
+  `).join('');
+}
+
+// ---- SHARE LINK ----
+function renderShareLink() {
+  const entries = loadEntries();
+  const encoded = btoa(encodeURIComponent(JSON.stringify(entries)));
+  const url = window.location.href.split('?')[0] + '?view=' + encoded;
+  document.getElementById('shareLink').textContent = url;
+}
+
+function copyLink() {
+  const link = document.getElementById('shareLink').textContent;
+  navigator.clipboard.writeText(link).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✓ Skopiowano';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Kopiuj link'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// ---- READONLY MODE ----
+let chartInstanceRO = null;
+let currentRangeRO = 7;
+
+function initReadonly(entries) {
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('readonlyApp').style.display = 'block';
+  renderStats(entries, 'statsRowRO');
+  renderChartRO(entries);
+  renderHistoryRO(entries);
+}
+
+function renderChartRO(entries) {
+  const data = getChartData(entries, currentRangeRO);
+  const ctx = document.getElementById('moodChartRO').getContext('2d');
+  if (chartInstanceRO) chartInstanceRO.destroy();
+  chartInstanceRO = new Chart(ctx, buildChartConfig(data));
+}
+
+function setRangeRO(r, btn) {
+  currentRangeRO = r;
+  document.querySelectorAll('#readonlyApp .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const entries = getROEntries();
+  renderChartRO(entries);
+}
+
+function getROEntries() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('view');
+  if (!raw) return [];
+  try { return JSON.parse(decodeURIComponent(atob(raw))); } catch { return []; }
+}
+
+function exportChartRO() {
+  const url = document.getElementById('moodChartRO').toDataURL('image/png');
+  const a = document.createElement('a'); a.href = url; a.download = 'nastroj_wykres.png'; a.click();
+}
+
+function renderHistoryRO(entries) {
+  const sorted = [...entries].sort((a,b) => b.date.localeCompare(a.date));
+  const container = document.getElementById('historyListRO');
+  if (!sorted.length) { container.innerHTML = '<div class="empty-state">Brak danych</div>'; return; }
+  container.innerHTML = sorted.map(e => `
+    <div class="entry-row">
+      <div class="entry-date">${formatDate(e.date)}</div>
+      <div class="entry-scores">
+        <div class="score-chip">
+          <span class="label">Nastrój</span>
+          <span class="val ${scoreClass(e.mood)}">${e.mood>0?'+'+e.mood:e.mood}</span>
+        </div>
+        <div class="score-chip">
+          <span class="label">Energia</span>
+          <span class="val color-energy">${e.energy>0?'+'+e.energy:e.energy}</span>
+        </div>
+      </div>
+      <div class="entry-note">${e.note || '—'}</div>
+    </div>
+  `).join('');
+}
+
+// ---- INIT ----
+setHeaderDates();
+const params = new URLSearchParams(window.location.search);
+if (params.has('view')) {
+  const entries = getROEntries();
+  initReadonly(entries);
+} else {
+  prefillToday();
+  updateSlider('mood');
+  updateSlider('energy');
+}
+</script>
+</body>
+</html>
